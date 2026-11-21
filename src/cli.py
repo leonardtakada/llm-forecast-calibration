@@ -30,6 +30,7 @@ def main():
     p.add_argument("--model", default=None, help="override model name")
     p.add_argument("--provider", default="zai", choices=["openai", "zai", "gemini", "custom"])
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--sleep", type=float, default=4.0)
 
     p = sub.add_parser("evaluate", help="fit calibrators and evaluate on holdout")
     p.add_argument("--model", default=None, help="filter to one model tag")
@@ -42,7 +43,7 @@ def main():
     elif args.cmd == "enrich":
         data.enrich(hours=args.hours, limit=args.limit)
     elif args.cmd == "forecast":
-        forecast.forecast(model=args.model, provider=args.provider, limit=args.limit)
+        forecast.forecast(model=args.model, provider=args.provider, limit=args.limit, sleep_s=args.sleep)
     elif args.cmd == "evaluate":
         calibrate.evaluate(model=args.model)
     elif args.cmd == "status":

@@ -194,7 +194,7 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
     # Brier by category
     fig, ax = plt.subplots(figsize=(7, 4))
     cat = te.assign(brier_raw=(te["probability"] - te["outcome"]) ** 2)
-    cat["brier_mkt"] = (te["market_close_cents"] / 100 - te["outcome"]) ** 2
+    cat["brier_mkt"] = (te["market_close_frac"] - te["outcome"]) ** 2
     g = cat.groupby("category")[["brier_raw", "brier_mkt"]].mean().round(3)
     g.plot.bar(ax=ax)
     ax.set_title(f"Brier by category (holdout) - {tag}")

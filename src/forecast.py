@@ -55,27 +55,35 @@ def _ask_llm(base, model, key, question, rules, close_date):
         f"Question closes: {close_date}\n\n"
         "What is the probability this resolves YES?"
     )
-    for attempt in range(4):
-        resp = requests.post(
-            f"{base}/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
-            json={
-                "model": model,
-                "temperature": 0.2,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user},
-                ],
-            },
-            timeout=90,
-        )
-        if resp.status_code == 429:
-            time.sleep(float(resp.headers.get("Retry-After", 2 ** attempt)))
+    for attempt in range(6):
+        try:
+            resp = requests.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json={
+                    "model": model,
+                    "temperature": 0.2,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user},
+                    ],
+                },
+                timeout=120,
+            )
+        except requests.exceptions.RequestException:
+            time.sleep(15 * (attempt + 1))
+            continue
+        if resp.status_code in (429, 502, 503):
+            wait = float(resp.headers.get("Retry-After", 20 * (attempt + 1)))
+            time.sleep(min(wait, 180))
             continue
         resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"]
+        message = resp.json()["choices"][0]["message"]
+        text = message.get("content") or ""
+        if not text.strip():
+            text = message.get("reasoning_content") or ""
         return {"probability": _parse_prob(text), "rationale": text[:300]}
-    raise RuntimeError("Rate limited beyond retries")
+    raise RuntimeError("rate limited or timed out beyond retries")
 
 
 def _parse_prob(text: str) -> float:
@@ -101,7 +109,7 @@ def load_cache() -> dict:
     return cache
 
 
-def forecast(model, provider, limit):
+def forecast(model, provider, limit, sleep_s=4.0):
     import pandas as pd
 
     if not MARKETS_PARQUET.exists():
@@ -144,5 +152,5 @@ def forecast(model, provider, limit):
             done += 1
             if done % 25 == 0:
                 print(f"  {done}/{len(todo)}")
-            time.sleep(0.3)
+            time.sleep(sleep_s)
     print(f"Forecasting complete: {done} new, total {len(load_cache())} records")
