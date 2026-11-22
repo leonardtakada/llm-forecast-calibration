@@ -25,6 +25,7 @@ def main():
     p = sub.add_parser("enrich", help="fetch market price N hours before close")
     p.add_argument("--hours", type=int, default=24)
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--retry-nulls", action="store_true", help="re-fetch markets whose cached price is null")
 
     p = sub.add_parser("forecast", help="run blind LLM forecasts")
     p.add_argument("--model", default=None, help="override model name")
@@ -41,7 +42,7 @@ def main():
     if args.cmd == "pull":
         data.pull(months=args.months, per_series=args.per_series)
     elif args.cmd == "enrich":
-        data.enrich(hours=args.hours, limit=args.limit)
+        data.enrich(hours=args.hours, limit=args.limit, retry_nulls=args.retry_nulls)
     elif args.cmd == "forecast":
         forecast.forecast(model=args.model, provider=args.provider, limit=args.limit, sleep_s=args.sleep)
     elif args.cmd == "evaluate":

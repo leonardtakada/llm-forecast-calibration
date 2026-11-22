@@ -101,6 +101,7 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
             print(f"No forecasts for model tag '{model}'")
             return None
     tag = fc["model"].iloc[0]
+    slug = tag.replace(":", "_") if model else "default"
 
     m = df.merge(fc[["market_id", "probability"]], on="market_id", how="inner")
     if PRICES_JSONL.exists():
@@ -112,7 +113,7 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
         prows = [json.loads(l) for l in open(PRICES_JSONL) if l.strip()]
         pr = pd.DataFrame([
             {"market_id": r["market_id"], "market_pre": _pre(r)} for r in prows
-        ]).dropna(subset=["market_id"]).drop_duplicates("market_id")
+        ]).dropna(subset=["market_id"]).drop_duplicates("market_id", keep="last")
         m = m.merge(pr, on="market_id", how="left")
     m = m.sort_values("close_time").reset_index(drop=True)
     n = len(m)
@@ -120,8 +121,14 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
         print(f"Only {n} merged forecasts - need more for a stable holdout.")
         return None
 
-    split = int(n * TRAIN_FRACTION)
-    tr, te = m.iloc[:split], m.iloc[split:]
+    # Stratified chronological split: oldest 75% trains, newest 25% tests, per series
+    m = m.sort_values(["series_ticker", "close_time"]).reset_index(drop=True)
+    m["_rank"] = m.groupby("series_ticker").cumcount()
+    m["_count"] = m.groupby("series_ticker")["market_id"].transform("count")
+    m["_k"] = (m["_count"] * TRAIN_FRACTION).astype(int).clip(lower=1)
+    m["_split"] = np.where(m["_rank"] < m["_k"], "train", "test")
+    tr = m[m["_split"] == "train"].copy()
+    te = m[m["_split"] == "test"].copy()
     print(f"Merged: {n} | train {len(tr)} ({tr.close_time.min().date()} to {tr.close_time.max().date()})")
     print(f"holdout {len(te)} ({te.close_time.min().date()} to {te.close_time.max().date()})")
 
@@ -188,7 +195,7 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
     ax.set_title(f"Reliability on holdout - {tag}")
     ax.legend(fontsize=8)
     fig.tight_layout()
-    fig.savefig(REPORTS_DIR / "reliability.png", dpi=140)
+    fig.savefig(REPORTS_DIR / f"reliability_{slug}.png", dpi=140)
     plt.close(fig)
 
     # Brier by category
@@ -199,7 +206,7 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
     g.plot.bar(ax=ax)
     ax.set_title(f"Brier by category (holdout) - {tag}")
     fig.tight_layout()
-    fig.savefig(REPORTS_DIR / "brier_by_category.png", dpi=140)
+    fig.savefig(REPORTS_DIR / f"brier_by_category_{slug}.png", dpi=140)
     plt.close(fig)
 
     raw_best = res.iloc[0]
@@ -237,6 +244,6 @@ def evaluate(model: str | None) -> pd.DataFrame | None:
         "",
         "See reliability.png and brier_by_category.png.",
     ]
-    (REPORTS_DIR / "summary.md").write_text("\n".join(summary))
+    (REPORTS_DIR / f"summary_{slug}.md").write_text("\n".join(summary))
     print("\n" + "\n".join(summary))
     return res

@@ -138,19 +138,32 @@ def _mid_price(candle: dict):
     ask = float(candle.get("yes_ask", {}).get("close_dollars") or 0)
     if 0 < bid <= ask < 1:
         return round((bid + ask) / 2, 4)
+    for solo in (ask, bid):
+        if 0 < solo < 1:
+            return round(solo, 4)
     prev = candle.get("price", {}).get("previous_dollars")
     return float(prev) if prev not in (None, "") else None
 
 
-def enrich(hours: int, limit) -> None:
+def _row_price(r: dict):
+    for k, v in r.items():
+        if k.startswith("price_"):
+            return v
+    return None
+
+
+def enrich(hours: int, limit, retry_nulls: bool = False) -> None:
     """Fetch market price N hours before close for each market (resumable)."""
     import json
 
     df = pd.read_parquet(MARKETS_PARQUET)
-    done: set = set()
+    cached: dict = {}
     if PRICES_JSONL.exists():
-        with open(PRICES_JSONL) as f:
-            done = {json.loads(l)["market_id"] for l in open(PRICES_JSONL) if l.strip()}
+        for l in open(PRICES_JSONL):
+            if l.strip():
+                r = json.loads(l)
+                cached[r["market_id"]] = _row_price(r)
+    done = {k for k, v in cached.items() if v is not None or not retry_nulls}
     todo = df[~df["market_id"].isin(done)]
     if limit:
         todo = todo.head(limit)
@@ -171,10 +184,13 @@ def enrich(hours: int, limit) -> None:
                     {"start_ts": start_ts, "end_ts": close_ts, "period_interval": 60},
                 )
                 candles = payload.get("candlesticks", [])
+                price = None
                 if candles:
                     tgt = close_ts - hours * 3600
-                    best = min(candles, key=lambda c: abs(int(c["end_period_ts"]) - tgt))
-                    price = _mid_price(best)
+                    for c in sorted(candles, key=lambda c: abs(int(c["end_period_ts"]) - tgt)):
+                        price = _mid_price(c)
+                        if price is not None:
+                            break
             except Exception as e:  # noqa: BLE001
                 print(f"  SKIP {row['market_id']}: {e}")
             f.write(json.dumps({
@@ -186,4 +202,6 @@ def enrich(hours: int, limit) -> None:
             if ok % 50 == 0:
                 print(f"  {ok}/{len(todo)}")
             time.sleep(0.35)
-    print(f"Enrichment complete: {ok} rows written")
+    total = {k: v for k, v in cached.items()}
+    nulls = sum(1 for v in total.values() if v is None)
+    print(f"Enrichment complete: {ok} rows written | cache: {len(total)} markets, {nulls} still null")
