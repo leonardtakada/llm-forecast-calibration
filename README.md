@@ -52,12 +52,36 @@ KXNFLGAME, KXMLBGAME). Only traded markets (volume > 0), capped per series
 for balance. The series universe is configurable in src/config.py. Data
 files are not redistributed - the pull command regenerates them.
 
-## Status
+## Results
 
-Dataset built: 723 resolved markets (crypto 240, sports 240, weather 180,
-macro 63) with T-24h market prices. Forecast + evaluation runs are driven by
-.env config; findings land in reports/summary.md once the first model has
-been run.
+### v1 (723 markets, global time split)
+
+Raw glm-4.6 scored AUROC 0.688 with 0.912 correlation to market prices -
+but the holdout clustered into a single settlement day dominated by
+same-day strike ladders, which inflates apparent agreement (both model and
+market order strikes monotonically by moneyness). Classic evaluation
+artifact; fixed in v2.
+
+### v2 (1,028 markets, stratified per-series split, full T-24h baseline)
+
+- Raw glm-4.6: Brier 0.266, ECE 0.196, AUROC 0.539
+- Best post-hoc (isotonic): Brier 0.226, ECE 0.048
+- Market at T-24h: Brier 0.121, AUROC 0.900
+- corr(LLM, market) = 0.265 overall; by category: macro 0.91, sports 0.37,
+  crypto 0.11, weather -0.26
+
+### Takeaways
+
+1. Single-cluster holdouts can inflate correlation via question structure;
+   stratified time splits matter.
+2. Blind-LLM forecasting skill is category-dependent: strong where priors
+   are informative (Fed/CPI), absent where real-time data is required
+   (weather).
+3. Post-hoc calibration corrects overconfidence (ECE 0.20 -> 0.05) but
+   cannot create discrimination (AUROC ~0.54 across all post-hoc methods).
+
+A glm-5.3 comparison on the same markets is running; results land in
+reports/summary_zai_glm-5.3.md.
 
 ## Attribution
 
