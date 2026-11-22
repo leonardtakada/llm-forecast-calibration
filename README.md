@@ -80,8 +80,15 @@ artifact; fixed in v2.
 3. Post-hoc calibration corrects overconfidence (ECE 0.20 -> 0.05) but
    cannot create discrimination (AUROC ~0.54 across all post-hoc methods).
 
-A glm-5.3 comparison on the same markets is running; results land in
-reports/summary_zai_glm-5.3.md.
+### glm-5.3 comparison (same 1,028 markets, same split)
+
+- Raw: Brier 0.2644, ECE 0.1983, AUROC 0.5507 (glm-4.6: 0.2657 / 0.1960 / 0.5386)
+- Best post-hoc: Platt 0.2240 (glm-4.6 isotonic: 0.2259)
+- corr(LLM, market): 0.272 (glm-4.6: 0.265)
+
+Verdict: a statistical tie. The newer, larger model brings no meaningful
+gain on blind forecasting - the bottleneck is missing information, not
+model capability.
 
 ## Attribution
 
